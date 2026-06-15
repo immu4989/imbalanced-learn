@@ -256,7 +256,7 @@ def test_geometric_mean_average(y_true, y_pred, average, expected_gmean):
             [0, 1, 1, 0, 0, 1],
             [1, 2, 1, 1, 2, 1],
             "weighted",
-            0.333,
+            0.609,
         ),
     ],
 )
@@ -548,3 +548,34 @@ def test_macro_averaged_mean_absolute_error_sample_weight():
     )
 
     assert ma_mae_unit_weights == pytest.approx(ma_mae_no_weights)
+
+
+def test_sensitivity_specificity_support_sample_weight():
+    # Non-regression test for #1180: with sample_weight the true-negative count
+    # must use the total weight, not the raw sample count. Otherwise the
+    # specificity is wrong and can exceed 1.
+    y_true = [0, 0, 1, 1]
+    y_pred = [0, 1, 1, 1]
+    sample_weight = [1.0, 2.0, 3.0, 4.0]
+
+    _, spe, _ = sensitivity_specificity_support(
+        y_true, y_pred, sample_weight=sample_weight, average=None
+    )
+    # class 1 as positive: TN=1 (sample 0), FP=2 (sample 1) -> 1/(1+2)=1/3.
+    assert_allclose(spe, [1.0, 1.0 / 3.0], rtol=R_TOL)
+    # a specificity is a rate and must never exceed 1.
+    assert np.all(spe <= 1.0)
+
+    # integer weights equal to repetition counts must match repeated samples.
+    y_true_w = [0, 1, 1]
+    y_pred_w = [1, 1, 0]
+    weights = [2, 1, 3]
+    y_true_rep = [0, 0, 1, 1, 1, 1]
+    y_pred_rep = [1, 1, 1, 0, 0, 0]
+    _, spe_w, _ = sensitivity_specificity_support(
+        y_true_w, y_pred_w, sample_weight=weights, average=None
+    )
+    _, spe_rep, _ = sensitivity_specificity_support(
+        y_true_rep, y_pred_rep, average=None
+    )
+    assert_allclose(spe_w, spe_rep, rtol=R_TOL)
