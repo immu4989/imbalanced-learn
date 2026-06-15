@@ -579,3 +579,57 @@ def test_sensitivity_specificity_support_sample_weight():
         y_true_rep, y_pred_rep, average=None
     )
     assert_allclose(spe_w, spe_rep, rtol=R_TOL)
+
+
+def _repeat_samples(y_true, y_pred, sample_weight):
+    """Expand each sample ``i`` into ``sample_weight[i]`` identical copies."""
+    y_true_rep, y_pred_rep = [], []
+    for yt, yp, weight in zip(y_true, y_pred, sample_weight):
+        y_true_rep.extend([yt] * weight)
+        y_pred_rep.extend([yp] * weight)
+    return y_true_rep, y_pred_rep
+
+
+@pytest.mark.parametrize("average", [None, "macro", "weighted", "micro"])
+@pytest.mark.parametrize(
+    "metric",
+    [
+        lambda *a, **k: sensitivity_specificity_support(*a, **k)[0],
+        lambda *a, **k: sensitivity_specificity_support(*a, **k)[1],
+        sensitivity_score,
+        specificity_score,
+        geometric_mean_score,
+        make_index_balanced_accuracy()(specificity_score),
+        make_index_balanced_accuracy()(geometric_mean_score),
+    ],
+    ids=[
+        "sensitivity",
+        "specificity",
+        "sensitivity_score",
+        "specificity_score",
+        "geometric_mean_score",
+        "iba_specificity",
+        "iba_geometric_mean",
+    ],
+)
+def test_metrics_sample_weight_repeat_equivalence(metric, average):
+    # Non-regression test for #1180: integer ``sample_weight`` must give the
+    # same result as physically repeating each sample that many times. This
+    # exercises the whole chain of metrics that delegate to
+    # ``sensitivity_specificity_support`` (where the specificity bug lived),
+    # not just that function in isolation.
+    y_true = [0, 0, 1, 1, 2, 2, 0, 1, 2]
+    y_pred = [0, 1, 1, 2, 2, 0, 0, 1, 1]
+    sample_weight = [1, 2, 3, 1, 2, 1, 2, 1, 3]
+    y_true_rep, y_pred_rep = _repeat_samples(y_true, y_pred, sample_weight)
+
+    weighted = np.atleast_1d(
+        metric(y_true, y_pred, average=average, sample_weight=sample_weight)
+    ).astype(float)
+    repeated = np.atleast_1d(
+        metric(y_true_rep, y_pred_rep, average=average)
+    ).astype(float)
+
+    assert_allclose(weighted, repeated, rtol=R_TOL)
+    # sensitivities, specificities and their geometric mean are rates in [0, 1].
+    assert np.all((weighted >= 0.0) & (weighted <= 1.0))
