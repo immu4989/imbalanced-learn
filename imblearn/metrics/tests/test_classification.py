@@ -626,9 +626,9 @@ def test_metrics_sample_weight_repeat_equivalence(metric, average):
     weighted = np.atleast_1d(
         metric(y_true, y_pred, average=average, sample_weight=sample_weight)
     ).astype(float)
-    repeated = np.atleast_1d(
-        metric(y_true_rep, y_pred_rep, average=average)
-    ).astype(float)
+    repeated = np.atleast_1d(metric(y_true_rep, y_pred_rep, average=average)).astype(
+        float
+    )
 
     assert_allclose(weighted, repeated, rtol=R_TOL)
     # sensitivities, specificities and their geometric mean are rates in [0, 1].
